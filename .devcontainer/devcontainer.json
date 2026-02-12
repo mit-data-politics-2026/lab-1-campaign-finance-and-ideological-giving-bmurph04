@@ -1,0 +1,23 @@
+{
+  "name": "Data and Politics - Lab 1",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/jsburckhardt/devcontainer-features/uv:1": {}
+  },
+  "postCreateCommand": "uv sync && curl -sL -o notebooks/lab01/public/data/contributions_merged.parquet https://github.com/mit-data-politics-2026/lab01-assignment/releases/download/data/contributions_merged.parquet",
+  "postStartCommand": "nohup bash -c 'uv run marimo edit notebooks/lab01/lab01.py --host 0.0.0.0 --port 2718 --no-token &'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "marimo-team.vscode-marimo"
+      ]
+    }
+  },
+  "forwardPorts": [2718],
+  "portsAttributes": {
+    "2718": {
+      "label": "Marimo",
+      "onAutoForward": "openPreview"
+    }
+  }
+}

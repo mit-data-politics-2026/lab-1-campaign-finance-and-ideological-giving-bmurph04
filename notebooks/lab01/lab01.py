@@ -1,23 +1,13 @@
 import marimo
 
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "marimo>=0.19.6",
-#     "polars>=1.37.0",
-#     "altair>=5.0.0",
-#     "numpy>=2.0.0",
-#     "scikit-learn>=1.5.0",
-# ]
-# ///
-
-__generated_with = "0.19.7"
+__generated_with = "0.20.1"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
@@ -26,10 +16,11 @@ def _():
     import polars as pl
     import altair as alt
     import numpy as np
+
     return alt, np, pl
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     # Lab 01: Campaign Finance & Ideology Estimation with PCA
@@ -67,7 +58,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, pl):
     # ------------------------------------------------------------------
     # Data loading
@@ -116,10 +107,16 @@ def _(mo, pl):
             ),
         ]
     )
-    return contributions, contributors_meta, matrix_df, occ_industry, recipients_meta
+    return (
+        contributions,
+        contributors_meta,
+        matrix_df,
+        occ_industry,
+        recipients_meta,
+    )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ## How to Complete Exercises
@@ -158,7 +155,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ---
@@ -171,7 +168,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ### Example 1: Top 20 donors by total amount
@@ -202,7 +199,7 @@ def _(alt, contributions, pl):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ### Exercise 0: MIT donors
@@ -223,9 +220,17 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _(contributions, mo, pl):
     # ---- Exercise 0 ----
-    mit_top_donors = ...  # YOUR CODE
+    mit_top_donors = (
+        contributions
+        .filter(pl.col("contributor_employer").str.to_lowercase().str.contains("mit"))
+        .group_by("bonica_cid", "contributor_name")
+        .agg(pl.col("total_amount").sum())
+        .sort("total_amount", descending=True)
+        .head(5)
+    )
+
 
     mo.stop(
         mit_top_donors is ...,
@@ -234,20 +239,21 @@ def _(mo):
         ),
     )
 
-    _ex0_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="Who is MIT's biggest political donor? Were you surprised?",
-                full_width=True,
-            )
-        }
-    )
-
-    mo.vstack([mit_top_donors, _ex0_reflection])
+    mit_top_donors
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    **Reflection:** Who is MIT's biggest political donor? Were you surprised?
+
+    MIT's biggest political donor is Ronald Rivest, and I was suprised to find out a cryptographer donated the most money, and by much more than the next political donor.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ### Exercise 1: In-state vs. out-of-state donations
@@ -276,18 +282,34 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _(alt, contributions, mo, pl):
     # ---- Exercise 1 ----
     # Steps 1-2: Filter to House/Senate candidates and the two major parties,
     # add an in_state column, group by party and in_state, and add labels.
     _congressional = (
-        ...
+        contributions
+        .filter(
+            pl.col("seat").is_in(["federal:house","federal:senate"]),
+            pl.col("recipient_party").is_in(["100","200"])
+        )
     )  # YOUR CODE: filter contributions on seat and recipient_party
 
     # Add an in_state column (True when contributor_state == recipient_state)
     # then group by recipient_party and in_state, summing total_amount.
     # Add readable labels for party and in_state.
-    in_out_state = ...  # YOUR CODE
+    in_out_state = (
+        _congressional
+        .with_columns(
+            pl.when(pl.col("contributor_state") == pl.col("recipient_state"))
+                .then(pl.lit("In state"))
+                .otherwise(pl.lit("Out of state"))
+            .alias("in_state"),
+            pl.col("recipient_party")
+                .replace({100: "Democrat", 200: "Republican"})
+        )
+        .group_by("recipient_party", "in_state")
+        .agg(pl.col("total_amount").sum())
+    )  # YOUR CODE
 
     mo.stop(
         _congressional is ... or in_out_state is ...,
@@ -297,7 +319,11 @@ def _(mo):
     )
 
     # Step 3: Create a normalized stacked bar chart
-    _ex1_chart = ...  # YOUR CODE
+    _ex1_chart = alt.Chart(in_out_state).mark_bar().encode(
+        x=alt.X('total_amount:Q', stack="normalize", title="Share of Total Amount"),
+        y = alt.Y("recipient_party:N", title="Recipient Party"),
+        color=alt.Color("in_state:N", title="Location")
+    )  # YOUR CODE
 
     mo.stop(
         _ex1_chart is ...,
@@ -306,16 +332,17 @@ def _(mo):
         ),
     )
 
-    _ex1_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="Which party receives a larger share from out-of-state donors? What does that tell you about the nationalization of campaign finance?",
-                full_width=True,
-            )
-        }
-    )
+    _ex1_chart
+    return
 
-    mo.vstack([_ex1_chart, _ex1_reflection])
+
+@app.cell
+def _(mo):
+    mo.md("""
+    **Reflection:** Which party receives a larger share from out-of-state donors? What does that tell you about the nationalization of campaign finance?
+
+    Republicans receive a larger share from out-of-state donors, though it is off by a small margin from Democrats. This shows that campaign financing has largely gone national with state candidates receiving money from all over the country by people that want to fund one party's interests. Rather than each candidate strictly represent their particular state, since donors want national political power through a majority, candidates represent the interests of, engaged high-income people across the nation.
+    """)
     return
 
 
@@ -377,7 +404,7 @@ def _(alt, contributions, pl):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ### Exercise 2: Industry donation patterns
@@ -399,7 +426,7 @@ def _(mo):
 
 
 @app.cell
-def _(contributions, mo, occ_industry):
+def _(alt, contributions, mo, occ_industry, pl):
     # ---- Exercise 2 ----
 
     # Step 1: Join contributions with the occupation-to-industry mapping
@@ -408,7 +435,13 @@ def _(contributions, mo, occ_industry):
     )
 
     # Step 2: Filter to major parties and non-null industries
-    _filtered = ...  # YOUR CODE: filter _with_industry with two conditions
+    _filtered = (
+        _with_industry
+        .filter(
+            pl.col("recipient_party").is_in(["100", "200"])
+            & pl.col("industry").is_not_null()
+        )
+    )  # YOUR CODE: filter _with_industry with two conditions
 
     mo.stop(
         _filtered is ...,
@@ -418,7 +451,17 @@ def _(contributions, mo, occ_industry):
     )
 
     # Step 3: Group by industry and party, sum amounts, add party label
-    industry_party = ...  # YOUR CODE
+    industry_party = (
+        _filtered
+        .group_by("industry", "recipient_party")
+        .agg(pl.col("total_amount").sum())
+        .with_columns(
+            pl.when(pl.col("recipient_party") == "100")
+            .then(pl.lit("Democrat"))
+            .otherwise(pl.lit("Republican"))
+            .alias("party")
+        )
+    ) # YOUR CODE
 
     mo.stop(
         industry_party is ...,
@@ -428,7 +471,19 @@ def _(contributions, mo, occ_industry):
     )
 
     # Step 4: Create a normalized stacked bar chart
-    _ex2_chart = ...  # YOUR CODE
+    _ex2_chart = alt.Chart(
+        industry_party, title="Donation Split by Party - Industries"
+    ).mark_bar().encode(
+        x=alt.X("total_amount:Q", title="Total Donated ($)", stack="normalize"),
+        y=alt.Y("industry:N", sort="-x", title=None),
+        color=alt.Color(
+            "party:N",
+            scale=alt.Scale(
+                domain=["Democrat", "Republican"], range=["#2166ac", "#b2182b"]
+            ),
+            title="Party",
+        ),
+    ).properties(width=600, height=350)  # YOUR CODE
 
     mo.stop(
         _ex2_chart is ...,
@@ -437,16 +492,17 @@ def _(contributions, mo, occ_industry):
         ),
     )
 
-    _ex2_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="Which industries lean most Democratic? Most Republican? What might explain these patterns?",
-                full_width=True,
-            )
-        }
-    )
+    _ex2_chart
+    return
 
-    mo.vstack([_ex2_chart, _ex2_reflection])
+
+@app.cell
+def _(mo):
+    mo.md("""
+    **Reflection:** Which industries lean most Democratic? Most Republican? What might explain these patterns?
+
+    Arts, academic, and technological industries lean more Democratic (with unemployed leaning most Democratic), while business and finance industries lean more Republican. One explanation might be that Republicans are more opposed to business regulation than Democrats are, which can explain why business and management industries might want to support Republicans over Democrats. On the other hand, Democrats are more supportive of welfare programs and academic advancement/accessibility, which can explain why the unemployed along with research/educational industries might support them more.
+    """)
     return
 
 
@@ -471,11 +527,54 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _(alt, contributions, mo, pl):
     # ---- Exercise 3 ----
     # Pick one of the questions from the prompt and implement your analysis here.
 
-    _ex3_result = ...  # YOUR CODE: analysis + visualization
+    # (b) 
+    # using code from above
+    _party_occ = (
+        contributions.filter(
+            pl.col("recipient_party").is_in(["100", "200"])
+            & pl.col("contributor_occupation").is_not_null()
+        )
+        .group_by(["contributor_occupation", "recipient_party"])
+        .agg(pl.col("total_amount").sum().alias("total"))
+    )
+
+    # Find top 10 occupations by total donations
+    _top_occs = (
+        _party_occ.group_by("contributor_occupation")
+        .agg(pl.col("total").sum().alias("grand_total"))
+        .sort("grand_total", descending=True)
+        .head(10)
+        .select("contributor_occupation")
+    )
+
+    _party_occ_avg = (
+        contributions.filter(
+            pl.col("contributor_occupation").is_in(_top_occs["contributor_occupation"]),
+            pl.col("recipient_party").is_in(["100", "200"])
+        )
+        .group_by(["contributor_occupation", "recipient_party"])
+        .agg(pl.col("total_amount").mean().alias("avg_donation"))
+        .with_columns(
+            pl.col("recipient_party").replace({100: "Democrat", 200: "Republican"}).alias("party")
+        )
+    )
+    _ex3_result = alt.Chart(
+        _party_occ_avg, title="Average Donation Size by Party - Top 10 Occupations"
+    ).mark_bar().encode(
+        x=alt.X("avg_donation:Q", title="Average Donated ($)"),
+        y=alt.Y("contributor_occupation:N", sort="-x", title=None),
+        color=alt.Color(
+            "party:N",
+            scale=alt.Scale(
+                domain=["Democrat", "Republican"], range=["#2166ac", "#b2182b"]
+            ),
+            title="Party",
+        ),
+    ).properties(width=600, height=350) # YOUR CODE: analysis + visualization
 
     mo.stop(
         _ex3_result is ...,
@@ -484,16 +583,17 @@ def _(mo):
         ),
     )
 
-    _ex3_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="Summarize your findings. What patterns did you find and what might explain them?",
-                full_width=True,
-            )
-        }
-    )
+    _ex3_result
+    return
 
-    mo.vstack([_ex3_result, _ex3_reflection])
+
+@app.cell
+def _(mo):
+    mo.md("""
+    **Reflection:** Summarize your findings. What patterns did you find and what might explain them?
+
+    I found that for the top 10 occupations, Republicans on average donate a larger amount of money to candidates than Democrats. This can be explained by Republicans tending to hold more entrepreneurial (chairman, executive, etc.) and high-income occupations, leading to more money to donate. I also found it really interesting that the 'candidate' occupation completely dominates any other occupation with an average of 5 million donated to nearly strictly Republicans. This is a crazy imbalance that shows that candidates (most likely Republican candidates) donate to other candidates in order to influence and support their decisions and national positions.
+    """)
     return
 
 
@@ -622,28 +722,24 @@ def _(X, mo, np):
     # Replace any NaN/Inf from division by zero with 0
     K = np.nan_to_num(K, nan=0.0, posinf=0.0, neginf=0.0)
 
-    _ex4_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="In your own words, what does this normalization accomplish? Why do we need to remove the effects of donor prolificness and candidate popularity before running PCA?",
-                full_width=True,
-            )
-        }
-    )
-
-    mo.vstack(
-        [
-            mo.md(f"""
+    mo.md(f"""
     **Normalization complete!**
 
     - K shape: `{K.shape}`
     - K range: `[{K.min():.4f}, {K.max():.4f}]`
     - K mean: `{K.mean():.6f}`
-    """),
-            _ex4_reflection,
-        ]
-    )
+    """)
     return (K,)
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    **Reflection:** In your own words, what does this normalization accomplish? Why do we need to remove the effects of donor prolificness and candidate popularity before running PCA?
+
+    This normalization allows us to recover patterns in the data of donors contributing to candidates, instead of skewing our data with raw amounts of contribution levels varying from donor to donor. Without normalization, donors that choose to donate to lots of candidates they support would dominate another donor that donated to one candidate they support, skewing our data towards prolific donors and losing donors that contribute less. This applies for candidates that receive more votes than others as well. We need to remove these effects because we are trying to capture ideological dimensions, not dimensions relating to raw amounts of support. We would lose the general trend along the ideological dimension if we chose to skew towards donors and candidates that unequally influence the raw distribution of data, catering our PCA analysis towards those with lots of money and/or those that are extremely popular for a period of time.
+    """)
+    return
 
 
 @app.cell
@@ -689,25 +785,25 @@ def _(K, alt, mo, pl):
         .properties(width=600, height=300)
     )
 
-    _ex5_reflection = mo.accordion(
-        {
-            "Reflection": mo.ui.text_area(
-                label="Why might PC1 dominate so strongly in campaign finance data? What does the gap between PC1 and PC2 tell us about the structure of American political donations?",
-                full_width=True,
-            )
-        }
-    )
-
     mo.vstack(
         [
             mo.md(
                 f"**PC1 explains {pca.explained_variance_ratio_[0]:.1%} of the variance.**"
             ),
             scree_chart,
-            _ex5_reflection,
         ]
     )
     return (scores,)
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    **Reflection:** Why might PC1 dominate so strongly in campaign finance data? What does the gap between PC1 and PC2 tell us about the structure of American political donations?
+
+    PC1 might dominate strongly in campaign finance data because the fit finds the most direct correlation it can, party affiliation, and represents it as the strongest indicator for who a person might donate to. The gap between PC1 and PC2 tells us that American political donations are guided primarily by which party a person is affiliated with, and any other factors can be seen as inconsistent signals for party donations in comparison.
+    """)
+    return
 
 
 @app.cell
@@ -742,7 +838,7 @@ def _(mo):
 
 
 @app.cell
-def _(X, mo, np, pl, recipient_ids, scores):
+def _(X, alt, mo, np, pl, recipient_ids, recipients_meta, scores):
     # ---- Exercise 6 ----
 
     # Step 1 (provided): Compute each recipient's ideology score as the
@@ -762,7 +858,12 @@ def _(X, mo, np, pl, recipient_ids, scores):
     )
 
     # Step 2: Join with recipients_meta and add a "party" label column
-    recipient_ideology = ...  # YOUR CODE
+    recipient_ideology = (
+        _scores_df.join(recipients_meta, on="bonica_rid")
+        .with_columns(
+            pl.col("recipient_party").replace({100: "Democrat", 200: "Republican"}).alias("party")
+        )
+    ) # YOUR CODE
 
     mo.stop(
         recipient_ideology is ...,
@@ -772,7 +873,7 @@ def _(X, mo, np, pl, recipient_ids, scores):
     )
 
     # Step 3: Take a random sample of 50 recipients
-    _sample = ...  # YOUR CODE: use .sample(50)
+    _sample = recipient_ideology.sample(50)  # YOUR CODE: use .sample(50)
 
     mo.stop(
         _sample is ...,
@@ -782,7 +883,27 @@ def _(X, mo, np, pl, recipient_ids, scores):
     )
 
     # Step 4: Create a dot chart
-    ideology_chart = ...  # YOUR CODE: alt.Chart(_sample).mark_circle(...)
+    ideology_chart = (
+        alt.Chart(_sample)
+        .mark_circle(size=100)
+        .encode(
+            x=alt.X("ideology_score:Q", title="Ideology Score"),    
+            y=alt.Y("recipient_name:N", sort="x", title=None),
+            color=alt.Color(
+                "party:N",
+                scale=alt.Scale(
+                    domain=["Democrat", "Republican"], 
+                    range=["#2166ac", "#b2182b"]
+                ),
+                title="Party"
+            )
+        )
+        .properties(
+            width=600, 
+            height=600,
+            title="Recipient Ideology Scores (Random Sample of 50)"
+        )
+    )  # YOUR CODE: alt.Chart(_sample).mark_circle(...)
 
     mo.stop(
         ideology_chart is ...,
@@ -833,7 +954,7 @@ def _(mo):
 
 
 @app.cell
-def _(contributors_meta, donor_ids, mo, np, occ_industry, pl, scores):
+def _(alt, contributors_meta, donor_ids, mo, np, occ_industry, pl, scores):
     # ---- Exercise 7 ----
 
     # Step 1 (provided): Build donor scores DataFrame
@@ -861,7 +982,48 @@ def _(contributors_meta, donor_ids, mo, np, occ_industry, pl, scores):
     )
 
     # Step 3: Faceted density plot by industry (top 8, excluding "Other")
-    industry_chart = ...  # YOUR CODE
+    _top_8 = (
+        donor_plot.filter(
+            pl.col("industry") != "Other"
+        )
+        .group_by("industry")
+        .count()
+        .sort("count", descending=True)
+        .head(8)
+    )
+
+    _industry_avg = (
+        donor_plot.filter(
+            pl.col("industry").is_in(_top_8["industry"])
+        )
+            .group_by("industry")
+            .agg(pl.col("pc1_score").mean())
+            .sort("pc1_score")["industry"]
+            .to_list()
+        )
+
+    industry_chart = (
+        alt.Chart(donor_plot.filter(pl.col("industry").is_in(_top_8["industry"])))
+        .transform_density(
+            "pc1_score",
+            as_=["pc1_score", "density"],
+            groupby=["industry"]
+        )
+        .mark_area()
+        .encode(
+            x=alt.X("pc1_score:Q", title="Ideology Score"),
+            y=alt.Y("density:Q", stack=None, title=None, axis=None),
+
+            row=alt.Row(
+                    "industry:N", 
+                    header=alt.Header(labelAngle=0, labelAlign='left'),
+                    sort=_industry_avg,
+                    title=None
+                ),
+                color=alt.Color("industry:N", legend=None)
+            )
+        .properties(width=400, height=60)
+    )  # YOUR CODE
 
     mo.stop(
         industry_chart is ...,
@@ -871,6 +1033,16 @@ def _(contributors_meta, donor_ids, mo, np, occ_industry, pl, scores):
     )
 
     industry_chart
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Finance and business management are most polarized (widespread).
+    Retirees leans most Republican.
+    The education industry and unemployed lean most Democrat.
+    """)
     return
 
 
